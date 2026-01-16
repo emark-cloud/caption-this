@@ -1,63 +1,155 @@
-import Image from "next/image";
+"use client";
+
+import { useState } from "react";
+import CreateRound from "@/components/CreateRound";
+import RoundCard from "@/components/RoundCard";
+import Leaderboard from "@/components/Leaderboard";
+import EmptyState from "@/components/EmptyState";
+import { Button, Card } from "@/components/ui";
+import { RoundCardSkeleton } from "@/components/skeletons";
+import { FadeIn, StaggerList } from "@/components/animations";
+import { useActiveRounds } from "@/hooks/useRound";
+import { connectWallet, createRound } from "@/lib/genlayer";
 
 export default function Home() {
+  const [walletAddress, setWalletAddress] = useState<string | null>(null);
+  const [isConnecting, setIsConnecting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [showCreateForm, setShowCreateForm] = useState(false);
+
+  const { rounds, isLoading: roundsLoading, refetch } = useActiveRounds();
+
+  const handleConnect = async () => {
+    setIsConnecting(true);
+    setError(null);
+    try {
+      const address = await connectWallet();
+      setWalletAddress(address);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to connect wallet");
+    } finally {
+      setIsConnecting(false);
+    }
+  };
+
+  const handleDisconnect = () => {
+    setWalletAddress(null);
+    setShowCreateForm(false);
+  };
+
+  const handleCreateRound = async (roundId: string, imageUrl: string, category: string) => {
+    await createRound(roundId, imageUrl, category);
+    setShowCreateForm(false);
+    await refetch();
+  };
+
   return (
-    <div className="flex min-h-screen items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex min-h-screen w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
+    <div className="min-h-screen bg-gray-50">
+      {/* Header */}
+      <header className="bg-white shadow-sm">
+        <div className="max-w-6xl mx-auto px-4 py-4 flex justify-between items-center">
+          <h1 className="text-2xl font-bold text-gray-900">Caption This</h1>
+
+          {walletAddress ? (
+            <div className="flex items-center space-x-3">
+              <span className="text-sm text-gray-600 font-mono">
+                {walletAddress.slice(0, 6)}...{walletAddress.slice(-4)}
+              </span>
+              <Button
+                variant={showCreateForm ? "secondary" : "primary"}
+                onClick={() => setShowCreateForm(!showCreateForm)}
+              >
+                {showCreateForm ? "Cancel" : "+ New Round"}
+              </Button>
+              <Button variant="secondary" onClick={handleDisconnect}>
+                Disconnect
+              </Button>
+            </div>
+          ) : (
+            <Button
+              onClick={handleConnect}
+              isLoading={isConnecting}
             >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
+              {isConnecting ? "Connecting..." : "Connect Wallet"}
+            </Button>
+          )}
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
+      </header>
+
+      {error && (
+        <div className="max-w-6xl mx-auto px-4 mt-4">
+          <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
+            {error}
+          </div>
+        </div>
+      )}
+
+      <main id="main-content" className="max-w-6xl mx-auto px-4 py-8">
+        {/* Create Round Form */}
+        {showCreateForm && (
+          <Card variant="elevated" className="mb-8 max-w-md mx-auto">
+            <h2 className="text-xl font-semibold mb-4">Create New Round</h2>
+            <CreateRound onSubmit={handleCreateRound} />
+          </Card>
+        )}
+
+        <div className="grid lg:grid-cols-3 gap-8">
+          {/* Active Rounds */}
+          <div className="lg:col-span-2">
+            <h2 className="text-xl font-semibold mb-4">Active Rounds</h2>
+
+            {roundsLoading ? (
+              <div className="grid sm:grid-cols-2 gap-4">
+                {[...Array(4)].map((_, i) => (
+                  <RoundCardSkeleton key={i} />
+                ))}
+              </div>
+            ) : rounds.length > 0 ? (
+              <StaggerList className="grid sm:grid-cols-2 gap-4">
+                {rounds.map((round, index) => (
+                  <RoundCard key={round.round_id || `round-${index}`} round={round} />
+                ))}
+              </StaggerList>
+            ) : (
+              <div className="bg-white rounded-xl shadow-md">
+                <EmptyState
+                  icon="game"
+                  title="No games in progress"
+                  description={
+                    walletAddress
+                      ? "Be the first to start a caption battle!"
+                      : "Connect your wallet to create a round"
+                  }
+                  action={
+                    walletAddress
+                      ? {
+                          label: "Create Round",
+                          onClick: () => setShowCreateForm(true),
+                        }
+                      : undefined
+                  }
+                />
+              </div>
+            )}
+          </div>
+
+          {/* Leaderboard */}
+          <div>
+            <h2 className="text-xl font-semibold mb-4">Leaderboard</h2>
+            <Card variant="elevated" padding="sm">
+              <Leaderboard currentAddress={walletAddress} />
+            </Card>
+
+            {/* XP Info */}
+            <div className="mt-4 bg-blue-50 rounded-lg p-4">
+              <h3 className="font-medium text-blue-900 mb-2">How to earn XP</h3>
+              <ul className="text-sm text-blue-800 space-y-1">
+                <li>🥇 Winner: +15 XP</li>
+                <li>🥈 Runner-up: +8 XP</li>
+                <li>✨ Participation: +3 XP</li>
+              </ul>
+            </div>
+          </div>
         </div>
       </main>
     </div>

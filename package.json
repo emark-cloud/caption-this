@@ -9,7 +9,10 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "framer-motion": "^12.26.2",
+    "genlayer-js": "^0.18.9",
     "next": "16.1.1",
+    "next-cloudinary": "^6.17.5",
     "react": "19.2.3",
     "react-dom": "19.2.3"
   },
