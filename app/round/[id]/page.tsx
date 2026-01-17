@@ -28,6 +28,7 @@ export default function RoundPage() {
   const [isCancelling, setIsCancelling] = useState(false);
   const [cancelError, setCancelError] = useState<string | null>(null);
   const [showConfetti, setShowConfetti] = useState(false);
+  const [linkCopied, setLinkCopied] = useState(false);
 
   const deadline = round?.submission_deadline ?? 0;
   const { formatted, isExpired, timeLeft } = useCountdown(deadline);
@@ -236,6 +237,19 @@ export default function RoundPage() {
     ? round.creator.toLowerCase() === walletAddress.toLowerCase()
     : false;
 
+  // Get shareable link
+  const shareLink = typeof window !== "undefined" ? window.location.href : "";
+
+  const handleCopyLink = async () => {
+    try {
+      await navigator.clipboard.writeText(shareLink);
+      setLinkCopied(true);
+      setTimeout(() => setLinkCopied(false), 2000);
+    } catch (err) {
+      console.error("Failed to copy link:", err);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gray-50 py-8 px-4">
       <Confetti isActive={showConfetti} />
@@ -343,6 +357,40 @@ export default function RoundPage() {
             </div>
           </div>
         </div>
+
+        {/* Share Link (during active phase) */}
+        {status === "active" && (
+          <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-xl p-4 mb-6">
+            <div className="flex items-center justify-between gap-4">
+              <div className="flex-1 min-w-0">
+                <h3 className="text-sm font-medium text-blue-900 mb-1">Invite others to caption!</h3>
+                <p className="text-xs text-blue-600 truncate">{shareLink}</p>
+              </div>
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={handleCopyLink}
+                className="shrink-0"
+              >
+                {linkCopied ? (
+                  <>
+                    <svg className="w-4 h-4 mr-1 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                    </svg>
+                    Copied!
+                  </>
+                ) : (
+                  <>
+                    <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                    </svg>
+                    Copy Link
+                  </>
+                )}
+              </Button>
+            </div>
+          </div>
+        )}
 
         {/* Caption Input (only during active phase) */}
         {status === "active" && walletAddress && (
