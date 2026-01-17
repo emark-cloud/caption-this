@@ -10,6 +10,7 @@ import { RoundCardSkeleton } from "@/components/skeletons";
 import { FadeIn } from "@/components/animations";
 import { useActiveRounds } from "@/hooks/useRound";
 import { connectWallet, createRound } from "@/lib/genlayer";
+import NicknameEditor from "@/components/NicknameEditor";
 
 interface PendingRound {
   roundId: string;
@@ -71,9 +72,12 @@ export default function Home() {
 
           {walletAddress ? (
             <div className="flex items-center space-x-3">
-              <span className="text-sm text-gray-600 font-mono">
-                {walletAddress.slice(0, 6)}...{walletAddress.slice(-4)}
-              </span>
+              <div className="flex flex-col items-end">
+                <NicknameEditor walletAddress={walletAddress} />
+                <span className="text-xs text-gray-400 font-mono">
+                  {walletAddress.slice(0, 6)}...{walletAddress.slice(-4)}
+                </span>
+              </div>
               <Button
                 variant={showCreateForm ? "secondary" : "primary"}
                 onClick={() => setShowCreateForm(!showCreateForm)}

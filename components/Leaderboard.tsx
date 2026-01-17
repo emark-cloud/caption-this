@@ -10,7 +10,7 @@ interface LeaderboardProps {
 }
 
 export default function Leaderboard({ currentAddress, limit = 10 }: LeaderboardProps) {
-  const { leaderboard, isLoading, error } = useLeaderboard();
+  const { leaderboard, nicknames, isLoading, error } = useLeaderboard();
 
   if (isLoading) {
     return <LeaderboardSkeleton />;
@@ -54,12 +54,22 @@ export default function Leaderboard({ currentAddress, limit = 10 }: LeaderboardP
     return `${address.slice(0, 6)}...${address.slice(-4)}`;
   };
 
+  const getDisplayName = (address: string | undefined): { name: string; isNickname: boolean } => {
+    if (!address) return { name: "Unknown", isNickname: false };
+    const nickname = nicknames[address];
+    if (nickname) {
+      return { name: nickname, isNickname: true };
+    }
+    return { name: formatAddress(address), isNickname: false };
+  };
+
   return (
     <div role="list" aria-label="XP Leaderboard" className="space-y-2">
       {displayedLeaderboard.map((entry, index) => {
         const rank = index + 1;
         const isCurrentUser =
           currentAddress?.toLowerCase() === entry.address?.toLowerCase();
+        const { name: displayName, isNickname } = getDisplayName(entry.address);
 
         return (
           <div
@@ -76,11 +86,11 @@ export default function Leaderboard({ currentAddress, limit = 10 }: LeaderboardP
                 {getMedalEmoji(rank) || `#${rank}`}
               </span>
               <span
-                className={`font-mono text-sm ${
+                className={`text-sm ${
                   isCurrentUser ? "font-semibold text-blue-700" : "text-gray-700"
-                }`}
+                } ${isNickname ? "" : "font-mono"}`}
               >
-                {formatAddress(entry.address)}
+                {displayName}
                 {isCurrentUser && (
                   <span className="ml-2 text-xs text-blue-600">(You)</span>
                 )}

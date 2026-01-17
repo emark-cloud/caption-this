@@ -10,7 +10,7 @@ import CaptionInput from "@/components/CaptionInput";
 import { Button, Badge, Card } from "@/components/ui";
 import { RoundPageSkeleton } from "@/components/skeletons";
 import { FadeIn, Confetti } from "@/components/animations";
-import { connectWallet, submitCaption, resolveRound, cancelRound } from "@/lib/genlayer";
+import { connectWallet, submitCaption, resolveRound, cancelRound, getNicknames } from "@/lib/genlayer";
 import { getRoundStatus } from "@/types/round";
 
 export default function RoundPage() {
@@ -29,6 +29,7 @@ export default function RoundPage() {
   const [cancelError, setCancelError] = useState<string | null>(null);
   const [showConfetti, setShowConfetti] = useState(false);
   const [linkCopied, setLinkCopied] = useState(false);
+  const [nicknames, setNicknames] = useState<Record<string, string>>({});
 
   const deadline = round?.submission_deadline ?? 0;
   const { formatted, isExpired, timeLeft } = useCountdown(deadline);
@@ -41,6 +42,51 @@ export default function RoundPage() {
       setResolutionPending(false);
     }
   }, [roundState.status, round]);
+
+  // Fetch nicknames for addresses in results and captions
+  useEffect(() => {
+    const fetchNicknames = async () => {
+      const addresses: string[] = [];
+
+      // Collect addresses from results
+      if (roundState.status === "resolved") {
+        const result = roundState.result;
+        if (result.winner) addresses.push(result.winner);
+        if (result.runner_up) addresses.push(result.runner_up);
+      }
+
+      // Collect addresses from round data
+      if (round?.result) {
+        if (round.result.winner) addresses.push(round.result.winner);
+        if (round.result.runner_up) addresses.push(round.result.runner_up);
+      }
+      if (round?.captions) {
+        round.captions.forEach((c) => {
+          if (c.author) addresses.push(c.author);
+        });
+      }
+
+      // Deduplicate and fetch
+      const uniqueAddresses = [...new Set(addresses)].filter(Boolean);
+      if (uniqueAddresses.length > 0) {
+        try {
+          const nicknameData = await getNicknames(uniqueAddresses);
+          setNicknames(nicknameData);
+        } catch {
+          // Nicknames are optional
+        }
+      }
+    };
+    fetchNicknames();
+  }, [roundState, round]);
+
+  // Helper to display nickname or address
+  const formatPlayer = (address: string | undefined): string => {
+    if (!address) return "Unknown";
+    const nickname = nicknames[address];
+    if (nickname) return nickname;
+    return `${address.slice(0, 6)}...${address.slice(-4)}`;
+  };
 
   const handleConnect = async () => {
     setIsConnecting(true);
@@ -126,8 +172,8 @@ export default function RoundPage() {
                   </span>
                 </div>
                 <p className="text-gray-800 text-lg">&ldquo;{result.winner_caption}&rdquo;</p>
-                <p className="text-gray-500 text-sm mt-1 font-mono">
-                  {result.winner ? `${result.winner.slice(0, 6)}...${result.winner.slice(-4)}` : "Unknown"}
+                <p className="text-gray-500 text-sm mt-1">
+                  {formatPlayer(result.winner)}
                 </p>
               </div>
             ) : (
@@ -138,8 +184,8 @@ export default function RoundPage() {
                     <span className="font-semibold text-yellow-800">Winner (+15 XP)</span>
                   </div>
                   <p className="text-gray-800 text-lg">&ldquo;{result.winner_caption}&rdquo;</p>
-                  <p className="text-gray-500 text-sm mt-1 font-mono">
-                    {result.winner ? `${result.winner.slice(0, 6)}...${result.winner.slice(-4)}` : "Unknown"}
+                  <p className="text-gray-500 text-sm mt-1">
+                    {formatPlayer(result.winner)}
                   </p>
                 </div>
 
@@ -150,8 +196,8 @@ export default function RoundPage() {
                       <span className="font-semibold text-gray-700">Runner-up (+8 XP)</span>
                     </div>
                     <p className="text-gray-800 text-lg">&ldquo;{result.runner_up_caption}&rdquo;</p>
-                    <p className="text-gray-500 text-sm mt-1 font-mono">
-                      {result.runner_up ? `${result.runner_up.slice(0, 6)}...${result.runner_up.slice(-4)}` : "Unknown"}
+                    <p className="text-gray-500 text-sm mt-1">
+                      {formatPlayer(result.runner_up)}
                     </p>
                   </div>
                 )}
@@ -487,8 +533,8 @@ export default function RoundPage() {
                   </span>
                 </div>
                 <p className="text-gray-800 text-lg">&ldquo;{round.result.winner_caption}&rdquo;</p>
-                <p className="text-gray-500 text-sm mt-1 font-mono">
-                  {round.result.winner.slice(0, 6)}...{round.result.winner.slice(-4)}
+                <p className="text-gray-500 text-sm mt-1">
+                  {formatPlayer(round.result.winner)}
                 </p>
                 <p className="text-purple-600 text-sm mt-2">
                   +{3 + Math.floor((round.result.solo_score || 0) * 15 / 10)} XP earned
@@ -503,8 +549,8 @@ export default function RoundPage() {
                     <span className="font-semibold text-yellow-800">Winner (+15 XP)</span>
                   </div>
                   <p className="text-gray-800 text-lg">&ldquo;{round.result.winner_caption}&rdquo;</p>
-                  <p className="text-gray-500 text-sm mt-1 font-mono">
-                    {round.result.winner.slice(0, 6)}...{round.result.winner.slice(-4)}
+                  <p className="text-gray-500 text-sm mt-1">
+                    {formatPlayer(round.result.winner)}
                   </p>
                 </div>
 
@@ -515,8 +561,8 @@ export default function RoundPage() {
                       <span className="font-semibold text-gray-700">Runner-up (+8 XP)</span>
                     </div>
                     <p className="text-gray-800 text-lg">&ldquo;{round.result.runner_up_caption}&rdquo;</p>
-                    <p className="text-gray-500 text-sm mt-1 font-mono">
-                      {round.result.runner_up.slice(0, 6)}...{round.result.runner_up.slice(-4)}
+                    <p className="text-gray-500 text-sm mt-1">
+                      {formatPlayer(round.result.runner_up)}
                     </p>
                   </div>
                 )}
@@ -538,8 +584,8 @@ export default function RoundPage() {
                   className="p-3 bg-gray-50 rounded-lg"
                 >
                   <p className="text-gray-800">&ldquo;{caption.text}&rdquo;</p>
-                  <p className="text-gray-500 text-xs mt-1 font-mono">
-                    {caption.author.slice(0, 6)}...{caption.author.slice(-4)}
+                  <p className="text-gray-500 text-xs mt-1">
+                    {formatPlayer(caption.author)}
                   </p>
                 </div>
               ))}

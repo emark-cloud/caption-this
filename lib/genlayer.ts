@@ -317,6 +317,20 @@ export async function cancelRound(roundId: string): Promise<string> {
   );
 }
 
+// Set nickname for the connected wallet
+export async function setNickname(nickname: string): Promise<string> {
+  return sendWriteTransaction(
+    GENLAYER_CONFIG.contractAddress as Address,
+    "set_nickname",
+    [nickname]
+  );
+}
+
+// Get nicknames for multiple addresses
+export async function getNicknames(addresses: string[]): Promise<Record<string, string>> {
+  return readContract<Record<string, string>>("get_nicknames", [addresses]);
+}
+
 // Get result for a resolved round (works after round data is cleared)
 export async function getResult<T>(roundId: string): Promise<T> {
   const client = createReadClient();

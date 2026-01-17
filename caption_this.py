@@ -127,6 +127,9 @@ class CaptionThis(gl.Contract):
     xp_runner_up: u256
     xp_participation: u256
 
+    # Nickname storage
+    nicknames: TreeMap[Address, str]
+
     def __init__(self):
         """Initialize the Caption This contract"""
         self.round_counter = u256(0)
@@ -226,6 +229,28 @@ class CaptionThis(gl.Contract):
         participant_key = f"{round_id}:{int(current_count)}"
         self.round_participant_addresses[participant_key] = sender
         self.round_participant_counts[round_id] = current_count + u256(1)
+
+    @gl.public.write
+    def set_nickname(self, nickname: str):
+        """
+        Set a nickname for the sender's address.
+
+        Args:
+            nickname: Display name (1-20 characters, alphanumeric and underscores only)
+        """
+        # Validate nickname length
+        if len(nickname) == 0:
+            raise UserError("Nickname cannot be empty")
+        if len(nickname) > 20:
+            raise UserError("Nickname too long: max 20 characters")
+
+        # Validate nickname characters (alphanumeric and underscores)
+        for char in nickname:
+            if not (char.isalnum() or char == '_'):
+                raise UserError("Nickname can only contain letters, numbers, and underscores")
+
+        sender = gl.message.sender_address
+        self.nicknames[sender] = nickname
 
     @gl.public.write
     def cancel_round(self, round_id: str):
@@ -595,6 +620,37 @@ The selection should be reasonable for the "{round_data.category}" category.
                     scores[i], scores[j] = scores[j], scores[i]
 
         return scores
+
+    @gl.public.view
+    def get_nickname(self, player: Address) -> str:
+        """
+        Get nickname for a player address.
+
+        Args:
+            player: Address to look up
+
+        Returns:
+            Nickname if set, empty string otherwise
+        """
+        return self.nicknames.get(player, "")
+
+    @gl.public.view
+    def get_nicknames(self, addresses: list) -> dict:
+        """
+        Get nicknames for multiple addresses at once.
+
+        Args:
+            addresses: List of addresses to look up
+
+        Returns:
+            Dictionary mapping address strings to nicknames
+        """
+        result = {}
+        for addr_str in addresses:
+            addr = Address(addr_str)
+            nickname = self.nicknames.get(addr, "")
+            result[addr_str] = nickname
+        return result
 
     @gl.public.view
     def get_player_xp(self, player: Address) -> int:

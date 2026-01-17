@@ -2,7 +2,7 @@
 export const GENLAYER_CONFIG = {
   chainId: 61999, // 0xF22F
   rpcUrl: "https://studio.genlayer.com/api",
-  contractAddress: "0xc43aC3931dA9DEd67F12391EE9E6663E0C3440E3",
+  contractAddress: "0x8dF1102cC710F56A928393e1A76Db5942cd57b82",
   consensusContract: "0x000000000000000000000000000000000000000A",
 } as const;
 
