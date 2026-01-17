@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import Image from "next/image";
 import Link from "next/link";
 import { useRound } from "@/hooks/useRound";
@@ -10,11 +10,12 @@ import CaptionInput from "@/components/CaptionInput";
 import { Button, Badge, Card } from "@/components/ui";
 import { RoundPageSkeleton } from "@/components/skeletons";
 import { FadeIn, Confetti } from "@/components/animations";
-import { connectWallet, submitCaption, resolveRound } from "@/lib/genlayer";
+import { connectWallet, submitCaption, resolveRound, cancelRound } from "@/lib/genlayer";
 import { getRoundStatus } from "@/types/round";
 
 export default function RoundPage() {
   const params = useParams();
+  const router = useRouter();
   // Handle both undefined and literal "undefined" string
   const rawId = typeof params.id === "string" ? params.id : undefined;
   const roundId = rawId && rawId !== "undefined" ? rawId : undefined;
@@ -22,17 +23,21 @@ export default function RoundPage() {
   const [walletAddress, setWalletAddress] = useState<string | null>(null);
   const [isConnecting, setIsConnecting] = useState(false);
   const [isResolving, setIsResolving] = useState(false);
+  const [resolutionPending, setResolutionPending] = useState(false);
   const [resolveError, setResolveError] = useState<string | null>(null);
+  const [isCancelling, setIsCancelling] = useState(false);
+  const [cancelError, setCancelError] = useState<string | null>(null);
   const [showConfetti, setShowConfetti] = useState(false);
 
   const deadline = round?.submission_deadline ?? 0;
   const { formatted, isExpired, timeLeft } = useCountdown(deadline);
   const isUrgent = timeLeft > 0 && timeLeft <= 30;
 
-  // Show confetti when results first appear
+  // Show confetti when results first appear and clear pending state
   useEffect(() => {
     if (roundState.status === "resolved" || (round && getRoundStatus(round) === "resolved")) {
       setShowConfetti(true);
+      setResolutionPending(false);
     }
   }, [roundState.status, round]);
 
@@ -102,7 +107,7 @@ export default function RoundPage() {
 
           <div className="bg-white rounded-xl shadow-lg p-6">
             <div className="flex items-center justify-between mb-6">
-              <h2 className="text-xl font-semibold">Round Results</h2>
+              <h2 className="text-xl font-semibold text-gray-900">Round Results</h2>
               <span className="px-3 py-1 bg-green-100 text-green-800 rounded-full text-sm font-medium">
                 Resolved
               </span>
@@ -202,6 +207,8 @@ export default function RoundPage() {
     setResolveError(null);
     try {
       await resolveRound(roundId);
+      // Transaction sent - now waiting for validators
+      setResolutionPending(true);
       await refetch();
     } catch (err) {
       setResolveError(err instanceof Error ? err.message : "Failed to resolve");
@@ -210,31 +217,73 @@ export default function RoundPage() {
     }
   };
 
+  const handleCancel = async () => {
+    if (!roundId) return;
+    setIsCancelling(true);
+    setCancelError(null);
+    try {
+      await cancelRound(roundId);
+      // Redirect to home after successful cancellation
+      router.push("/");
+    } catch (err) {
+      setCancelError(err instanceof Error ? err.message : "Failed to cancel round");
+      setIsCancelling(false);
+    }
+  };
+
+  // Check if current user is the creator
+  const isCreator = round?.creator && walletAddress
+    ? round.creator.toLowerCase() === walletAddress.toLowerCase()
+    : false;
+
   return (
     <div className="min-h-screen bg-gray-50 py-8 px-4">
       <Confetti isActive={showConfetti} />
       <FadeIn className="max-w-2xl mx-auto">
-        <Link
-          href="/"
-          className="inline-flex items-center text-gray-600 hover:text-gray-900 mb-6 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 rounded"
-          aria-label="Back to home"
-        >
-          <svg
-            className="w-5 h-5 mr-1"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-            aria-hidden="true"
+        {/* Header with back button and cancel option */}
+        <div className="flex items-center justify-between mb-6">
+          <Link
+            href="/"
+            className="inline-flex items-center px-3 py-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
+            aria-label="Back to home"
           >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M15 19l-7-7 7-7"
-            />
-          </svg>
-          Back
-        </Link>
+            <svg
+              className="w-5 h-5 mr-1"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+              aria-hidden="true"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M15 19l-7-7 7-7"
+              />
+            </svg>
+            Back to Home
+          </Link>
+
+          {/* Cancel button - only for creator, before resolution */}
+          {isCreator && status !== "resolved" && (
+            <Button
+              variant="danger"
+              size="sm"
+              onClick={handleCancel}
+              isLoading={isCancelling}
+              disabled={isCancelling}
+            >
+              {isCancelling ? "Cancelling..." : "Cancel Round"}
+            </Button>
+          )}
+        </div>
+
+        {/* Cancel error message */}
+        {cancelError && (
+          <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
+            {cancelError}
+          </div>
+        )}
 
         {/* Round Image */}
         <div className="bg-white rounded-xl shadow-lg overflow-hidden mb-6">
@@ -298,7 +347,7 @@ export default function RoundPage() {
         {/* Caption Input (only during active phase) */}
         {status === "active" && walletAddress && (
           <div className="bg-white rounded-xl shadow-lg p-6 mb-6">
-            <h2 className="text-lg font-semibold mb-4">Submit Your Caption</h2>
+            <h2 className="text-lg font-semibold mb-4 text-gray-900">Submit Your Caption</h2>
             <CaptionInput
               onSubmit={handleSubmitCaption}
               disabled={isExpired}
@@ -321,28 +370,45 @@ export default function RoundPage() {
         {/* Resolve Button (when voting phase) */}
         {status === "voting" && round.participant_count >= 1 && (
           <Card variant="elevated" className="mb-6">
-            <h2 className="text-lg font-semibold mb-2">Ready to Resolve</h2>
-            <p className="text-gray-600 text-sm mb-4">
-              {round.participant_count === 1
-                ? "One caption submitted. AI will score it from 1-10."
-                : "The submission deadline has passed. Trigger AI resolution to determine the winners."}
-            </p>
-            {resolveError && (
-              <p className="text-red-600 text-sm mb-4">{resolveError}</p>
-            )}
-            {walletAddress ? (
-              <Button
-                onClick={handleResolve}
-                isLoading={isResolving}
-                fullWidth
-                className="bg-purple-600 hover:bg-purple-700"
-              >
-                {isResolving ? "Resolving (this may take 1-2 mins)..." : "Resolve Round"}
-              </Button>
+            {resolutionPending ? (
+              /* Pending resolution indicator */
+              <div className="text-center py-4">
+                <div className="animate-spin h-10 w-10 border-3 border-purple-600 border-t-transparent rounded-full mx-auto mb-4"></div>
+                <h2 className="text-lg font-semibold text-purple-800 mb-2">Resolution in Progress</h2>
+                <p className="text-purple-600 text-sm mb-2">
+                  Validators are processing the AI evaluation...
+                </p>
+                <p className="text-gray-500 text-xs">
+                  This typically takes 1-2 minutes. Results will appear automatically.
+                </p>
+              </div>
             ) : (
-              <Button onClick={handleConnect} isLoading={isConnecting} fullWidth>
-                {isConnecting ? "Connecting..." : "Connect Wallet to Resolve"}
-              </Button>
+              /* Ready to resolve */
+              <>
+                <h2 className="text-lg font-semibold mb-2 text-gray-900">Ready to Resolve</h2>
+                <p className="text-gray-600 text-sm mb-4">
+                  {round.participant_count === 1
+                    ? "One caption submitted. AI will score it from 1-10."
+                    : "The submission deadline has passed. Trigger AI resolution to determine the winners."}
+                </p>
+                {resolveError && (
+                  <p className="text-red-600 text-sm mb-4">{resolveError}</p>
+                )}
+                {walletAddress ? (
+                  <Button
+                    onClick={handleResolve}
+                    isLoading={isResolving}
+                    fullWidth
+                    className="bg-purple-600 hover:bg-purple-700"
+                  >
+                    {isResolving ? "Submitting..." : "Resolve Round"}
+                  </Button>
+                ) : (
+                  <Button onClick={handleConnect} isLoading={isConnecting} fullWidth>
+                    {isConnecting ? "Connecting..." : "Connect Wallet to Resolve"}
+                  </Button>
+                )}
+              </>
             )}
           </Card>
         )}
@@ -358,7 +424,7 @@ export default function RoundPage() {
         {/* Results (when resolved) */}
         {status === "resolved" && round.result && (
           <div className="bg-white rounded-xl shadow-lg p-6 mb-6">
-            <h2 className="text-lg font-semibold mb-4">Results</h2>
+            <h2 className="text-lg font-semibold mb-4 text-gray-900">Results</h2>
 
             {round.result.is_solo_round ? (
               /* Solo round - show score */
@@ -414,7 +480,7 @@ export default function RoundPage() {
         {/* All Captions (visible after deadline) */}
         {(status === "voting" || status === "resolved") && round.captions.length > 0 && (
           <div className="bg-white rounded-xl shadow-lg p-6">
-            <h2 className="text-lg font-semibold mb-4">
+            <h2 className="text-lg font-semibold mb-4 text-gray-900">
               All Captions ({round.captions.length})
             </h2>
             <div className="space-y-3">
