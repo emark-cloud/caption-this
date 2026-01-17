@@ -82,7 +82,7 @@ export default function NicknameEditor({ walletAddress }: NicknameEditorProps) {
         onChange={(e) => setNicknameValue(e.target.value)}
         placeholder="Enter nickname"
         maxLength={20}
-        className="px-2 py-1 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-blue-500 w-32"
+        className="px-2 py-1 text-sm text-gray-900 border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-blue-500 w-32"
         disabled={isSaving}
         autoFocus
         onKeyDown={(e) => {
