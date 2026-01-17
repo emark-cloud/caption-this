@@ -7,17 +7,31 @@ import Leaderboard from "@/components/Leaderboard";
 import EmptyState from "@/components/EmptyState";
 import { Button, Card } from "@/components/ui";
 import { RoundCardSkeleton } from "@/components/skeletons";
-import { FadeIn, StaggerList } from "@/components/animations";
+import { FadeIn } from "@/components/animations";
 import { useActiveRounds } from "@/hooks/useRound";
 import { connectWallet, createRound } from "@/lib/genlayer";
+
+interface PendingRound {
+  roundId: string;
+  imageUrl: string;
+  category: string;
+  createdAt: number;
+}
 
 export default function Home() {
   const [walletAddress, setWalletAddress] = useState<string | null>(null);
   const [isConnecting, setIsConnecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showCreateForm, setShowCreateForm] = useState(false);
+  const [pendingRounds, setPendingRounds] = useState<PendingRound[]>([]);
 
   const { rounds, isLoading: roundsLoading, refetch } = useActiveRounds();
+
+  // Compute which pending rounds to display (those not yet confirmed)
+  const confirmedRoundIds = new Set(rounds.map((r) => r.round_id));
+  const visiblePendingRounds = pendingRounds.filter(
+    (pr) => !confirmedRoundIds.has(pr.roundId)
+  );
 
   const handleConnect = async () => {
     setIsConnecting(true);
@@ -39,6 +53,11 @@ export default function Home() {
 
   const handleCreateRound = async (roundId: string, imageUrl: string, category: string) => {
     await createRound(roundId, imageUrl, category);
+    // Add to pending rounds immediately
+    setPendingRounds((prev) => [
+      ...prev,
+      { roundId, imageUrl, category, createdAt: Date.now() },
+    ]);
     setShowCreateForm(false);
     await refetch();
   };
@@ -88,7 +107,7 @@ export default function Home() {
         {/* Create Round Form */}
         {showCreateForm && (
           <Card variant="elevated" className="mb-8 max-w-md mx-auto">
-            <h2 className="text-xl font-semibold mb-4">Create New Round</h2>
+            <h2 className="text-xl font-semibold mb-4 text-gray-900">Create New Round</h2>
             <CreateRound onSubmit={handleCreateRound} />
           </Card>
         )}
@@ -96,7 +115,7 @@ export default function Home() {
         <div className="grid lg:grid-cols-3 gap-8">
           {/* Active Rounds */}
           <div className="lg:col-span-2">
-            <h2 className="text-xl font-semibold mb-4">Active Rounds</h2>
+            <h2 className="text-xl font-semibold mb-4 text-gray-900">Active Rounds</h2>
 
             {roundsLoading ? (
               <div className="grid sm:grid-cols-2 gap-4">
@@ -104,12 +123,42 @@ export default function Home() {
                   <RoundCardSkeleton key={i} />
                 ))}
               </div>
-            ) : rounds.length > 0 ? (
-              <StaggerList className="grid sm:grid-cols-2 gap-4">
+            ) : rounds.length > 0 || visiblePendingRounds.length > 0 ? (
+              <div className="grid sm:grid-cols-2 gap-4">
+                {/* Pending rounds - show first with indicator */}
+                {visiblePendingRounds.map((pending) => (
+                  <div
+                    key={`pending-${pending.roundId}`}
+                    className="bg-white rounded-xl shadow-md overflow-hidden border-2 border-blue-300 relative"
+                  >
+                    <div className="absolute inset-0 bg-blue-50/50 z-10 flex flex-col items-center justify-center">
+                      <div className="bg-white/90 rounded-lg p-4 shadow-lg text-center">
+                        <div className="animate-spin h-6 w-6 border-2 border-blue-600 border-t-transparent rounded-full mx-auto mb-2"></div>
+                        <p className="text-blue-800 font-medium text-sm">Creating Round...</p>
+                        <p className="text-blue-600 text-xs">Waiting for validators</p>
+                      </div>
+                    </div>
+                    <div className="relative h-40 w-full bg-gray-200">
+                      {pending.imageUrl && (
+                        <img
+                          src={pending.imageUrl}
+                          alt="Round image"
+                          className="object-cover w-full h-full opacity-50"
+                        />
+                      )}
+                    </div>
+                    <div className="p-4">
+                      <span className="text-sm font-medium text-blue-600">
+                        {pending.category}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+                {/* Confirmed rounds */}
                 {rounds.map((round, index) => (
                   <RoundCard key={round.round_id || `round-${index}`} round={round} />
                 ))}
-              </StaggerList>
+              </div>
             ) : (
               <div className="bg-white rounded-xl shadow-md">
                 <EmptyState
@@ -135,7 +184,7 @@ export default function Home() {
 
           {/* Leaderboard */}
           <div>
-            <h2 className="text-xl font-semibold mb-4">Leaderboard</h2>
+            <h2 className="text-xl font-semibold mb-4 text-gray-900">Leaderboard</h2>
             <Card variant="elevated" padding="sm">
               <Leaderboard currentAddress={walletAddress} />
             </Card>
