@@ -7,8 +7,6 @@ import ImageUpload from "./ImageUpload";
 const CATEGORIES = [
   "Funniest",
   "Most Accurate",
-  "Most Creative",
-  "Best Meme",
 ] as const;
 
 type Category = (typeof CATEGORIES)[number];
