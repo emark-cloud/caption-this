@@ -59,7 +59,7 @@ def get_current_timestamp() -> int:
 # ============================================================
 VALID_CATEGORIES = ["Funniest", "Most Accurate", "Most Creative", "Best Meme"]
 MAX_CAPTION_LENGTH = 280
-DEFAULT_SUBMISSION_DURATION = 180  # 3 minutes in seconds
+DEFAULT_SUBMISSION_DURATION = 300  # 5 minutes in seconds
 
 # XP rewards
 XP_WINNER = 15
