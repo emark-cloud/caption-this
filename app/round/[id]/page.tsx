@@ -11,6 +11,7 @@ import { Button, Badge, Card } from "@/components/ui";
 import { RoundPageSkeleton } from "@/components/skeletons";
 import { FadeIn, Confetti } from "@/components/animations";
 import { connectWallet, submitCaption, resolveRound, cancelRound, getNicknames } from "@/lib/genlayer";
+import { parseGenLayerError } from "@/lib/errors";
 import { getRoundStatus } from "@/types/round";
 
 export default function RoundPage() {
@@ -258,7 +259,8 @@ export default function RoundPage() {
       setResolutionPending(true);
       await refetch();
     } catch (err) {
-      setResolveError(err instanceof Error ? err.message : "Failed to resolve");
+      const parsed = parseGenLayerError(err);
+      setResolveError(parsed.message);
     } finally {
       setIsResolving(false);
     }
