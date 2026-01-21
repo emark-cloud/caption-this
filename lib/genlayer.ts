@@ -59,7 +59,7 @@ async function directReadContract<T>(
   args: CalldataEncodable[] = []
 ): Promise<T> {
   const calldataObj = calldata.makeCalldataObject(functionName, args, undefined);
-  const encodedCalldata = calldata.encode(calldataObj);
+  const encodedCalldata = calldata.encode(calldataObj) as string | Uint8Array;
 
   // Ensure data is a hex string with 0x prefix
   const hexData = typeof encodedCalldata === 'string'
