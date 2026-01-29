@@ -69,10 +69,10 @@ class MyContract(gl.Contract):
 ### 1.4 Accessing Transaction Context
 
 ```python
-from genlayer.gl import message
+import genlayer.gl as gl
 
-sender = message.sender_account    # Address of caller
-value = message.value              # Sent payment (for payable methods)
+sender = gl.message.sender_address    # Address of caller
+value = gl.message.value              # Sent payment (for payable methods)
 ```
 
 ### 1.5 LLM Integration (AI Features)
@@ -89,12 +89,31 @@ def ai_method(self, user_input: str) -> str:
     # Wrap non-deterministic AI in equivalence principle
     outcome = gl.eq_principle.strict_eq(make_decision)
     return outcome
+
+@gl.public.write
+def ai_evaluation(self, data: str) -> str:
+    def evaluate() -> str:
+        prompt = f"""Evaluate this data: {data}
+        Return a JSON object with your assessment."""
+        return gl.nondet.exec_prompt(prompt).strip()
+
+    # Use non-comparative for subjective evaluations
+    result = gl.eq_principle.prompt_non_comparative(
+        evaluate,
+        task="Evaluate the provided data",
+        criteria="""
+The AI response must:
+1. Be valid JSON
+2. Contain reasonable assessment based on the input
+"""
+    )
+    return result
 ```
 
 **Equivalence Principles:**
 - `gl.eq_principle.strict_eq(fn)` - Validators must get exact same result
-- `gl.eq_principle.prompt_comparative(fn, principle)` - LLM compares leader output
-- `gl.eq_principle.prompt_non_comparative(fn, principle)` - LLM validates independently
+- `gl.eq_principle.prompt_comparative(fn, task, criteria)` - LLM compares leader output
+- `gl.eq_principle.prompt_non_comparative(fn, task, criteria)` - LLM validates independently
 
 ### 1.6 Web Data Access
 
@@ -148,110 +167,148 @@ npm install genlayer-js ethers viem
 
 ```typescript
 // lib/genlayer.ts
-import { createClient, ClientMode } from "genlayer-js";
-import * as abi from "genlayer-js/abi";
+import { createClient, abi } from "genlayer-js";
+import { studionet } from "genlayer-js/chains";
+import type { CalldataEncodable } from "genlayer-js/types";
+import { createPublicClient, http, encodeFunctionData, type Address, type Hex } from "viem";
 
-export const GENLAYER_CHAIN = {
-  chainId: "0xF22F",  // 61999 - StudioNet
-  chainName: "GenLayer StudioNet",
-  rpcUrls: ["https://studio.genlayer.com/api"],
+const { calldata, transactions } = abi;
+
+export const GENLAYER_CONFIG = {
+  chainId: 61999, // 0xF22F - StudioNet
+  rpcUrl: "https://studio.genlayer.com/api",
+  contractAddress: "0xYOUR_CONTRACT_ADDRESS",
 };
 
-const client = createClient({
-  endpoint: "https://studio.genlayer.com/api",
-  mode: ClientMode.Transactional,
-});
+// Create a read-only client
+export function createReadClient() {
+  return createClient({
+    chain: studionet,
+  });
+}
 ```
 
 ### 2.3 Reading Contract State
 
 ```typescript
-export async function genlayerRead(
-  contractAddress: string,
-  method: string,
-  args: any[] = []
-): Promise<any> {
+// Helper to convert Map to plain object recursively
+function mapToObject(value: unknown): unknown {
+  if (value instanceof Map) {
+    const obj: Record<string, unknown> = {};
+    value.forEach((v, k) => {
+      obj[k] = mapToObject(v);
+    });
+    return obj;
+  }
+  if (Array.isArray(value)) {
+    return value.map(mapToObject);
+  }
+  if (typeof value === 'bigint') {
+    return Number(value);
+  }
+  return value;
+}
+
+// Read contract state
+export async function readContract<T>(
+  functionName: string,
+  args: CalldataEncodable[] = []
+): Promise<T> {
+  const client = createReadClient();
+
   const result = await client.readContract({
-    address: contractAddress,
-    functionName: method,
-    args: args,
+    address: GENLAYER_CONFIG.contractAddress as Address,
+    functionName,
+    args,
   });
-  return result;
+
+  // Convert Map objects to plain objects
+  return mapToObject(result) as T;
 }
 
 // Usage
-const room = await genlayerRead(CONTRACT_ADDRESS, "get_room", [roomId]);
+const round = await readContract<Round>("get_round", [roundId]);
 ```
 
-**Important:** GenLayer SDK returns `Map` objects and `bigint` for `u256`. Convert them:
-
-```typescript
-// Convert Map to Object
-const data = result instanceof Map ? Object.fromEntries(result) : result;
-
-// Convert BigInt to number
-const timestamp = typeof room.created_at === 'bigint'
-  ? Number(room.created_at)
-  : room.created_at;
-```
+**Important:** GenLayer SDK returns `Map` objects and `bigint` for `u256`. The `mapToObject` helper handles both conversions recursively.
 
 ### 2.4 Writing Transactions
 
 GenLayer writes go through a **consensus contract**, not directly to your contract:
 
 ```typescript
-import { toRlp, toHex, encodeFunctionData } from "viem";
-import { AbiCoder } from "ethers";
+import { encodeFunctionData, parseEventLogs, type Address, type Hex } from "viem";
 
-const CONSENSUS_CONTRACT = "0x000000000000000000000000000000000000000A";
+// StudioNet consensus contract address
+const CONSENSUS_CONTRACT = "0xb7278A61aa25c888815aFC32Ad3cC52fF24fE575";
 
-export async function genlayerWrite(
-  contractAddress: string,
-  method: string,
-  args: any[] = []
+// Consensus contract ABI
+const CONSENSUS_ABI = [
+  {
+    inputs: [
+      { name: "_sender", type: "address" },
+      { name: "_recipient", type: "address" },
+      { name: "_numOfInitialValidators", type: "uint256" },
+      { name: "_maxRotations", type: "uint256" },
+      { name: "_txData", type: "bytes" },
+    ],
+    name: "addTransaction",
+    outputs: [],
+    stateMutability: "nonpayable",
+    type: "function",
+  },
+  {
+    anonymous: false,
+    inputs: [
+      { indexed: true, name: "txId", type: "bytes32" },
+      { indexed: true, name: "recipient", type: "address" },
+      { indexed: true, name: "activator", type: "address" },
+    ],
+    name: "NewTransaction",
+    type: "event",
+  },
+] as const;
+
+export async function sendWriteTransaction(
+  contractAddress: Address,
+  functionName: string,
+  args: CalldataEncodable[]
 ): Promise<string> {
   const accounts = await window.ethereum.request({
-    method: "eth_requestAccounts"
-  });
-  const sender = accounts[0];
+    method: "eth_accounts"
+  }) as Address[];
+  const senderAddress = accounts[0];
 
   // 1. Encode method call using GenLayer ABI
-  const calldataObj = abi.calldata.makeCalldataObject(method, args);
-  const encodedBytes = abi.calldata.encode(calldataObj);
+  const calldataObj = calldata.makeCalldataObject(functionName, args, undefined);
+  const encodedCalldata = calldata.encode(calldataObj);
 
-  // 2. RLP encode [calldata, leaderOnly=false]
-  const serializedData = toRlp([toHex(encodedBytes), toHex(false)]);
+  // 2. Serialize using genlayer-js transactions helper
+  const serializedData = transactions.serialize([encodedCalldata, false]) as Hex;
 
   // 3. Create addTransaction call to consensus contract
-  const consensusAbi = [{
-    name: "addTransaction",
-    type: "function",
-    inputs: [
-      { name: "sender", type: "address" },
-      { name: "targetContract", type: "address" },
-      { name: "initialValidators", type: "uint8" },
-      { name: "maxRotations", type: "uint8" },
-      { name: "data", type: "bytes" },
-    ],
-    outputs: [],
-  }];
-
-  const data = encodeFunctionData({
-    abi: consensusAbi,
+  const txData = encodeFunctionData({
+    abi: CONSENSUS_ABI,
     functionName: "addTransaction",
-    args: [sender, contractAddress, 5, 3, serializedData],
+    args: [
+      senderAddress,
+      contractAddress,
+      BigInt(5),  // numOfInitialValidators
+      BigInt(3),  // maxRotations
+      serializedData,
+    ],
   });
 
   // 4. Send via MetaMask
   const txHash = await window.ethereum.request({
     method: "eth_sendTransaction",
     params: [{
-      from: sender,
+      from: senderAddress,
       to: CONSENSUS_CONTRACT,
-      data: data,
-      gas: "0x30D40",  // Fixed gas, GenLayer handles fees
+      data: txData,
+      gas: "0x7A120",  // 500000
     }],
-  });
+  }) as Hex;
 
   return txHash;
 }
@@ -493,6 +550,7 @@ Use GenLayer Studio for rapid iteration:
 | Read data | `@gl.public.view` | `client.readContract()` |
 | Write data | `@gl.public.write` | `addTransaction` to consensus contract |
 | AI call | `gl.nondet.exec_prompt()` | N/A (backend only) |
-| Consensus | `gl.eq_principle.strict_eq()` | Wait & poll |
+| Consensus | `gl.eq_principle.prompt_non_comparative(fn, task=, criteria=)` | Wait & poll |
+| Sender address | `gl.message.sender_address` | N/A |
 | Errors | `raise UserError("msg")` | Map to friendly messages |
 

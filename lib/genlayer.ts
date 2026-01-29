@@ -43,8 +43,8 @@ const CONSENSUS_ABI = [
   },
 ] as const;
 
-// StudioNet consensus contract address
-const CONSENSUS_CONTRACT = "0xb7278A61aa25c888815aFC32Ad3cC52fF24fE575";
+// StudioNet consensus contract address (from config)
+const CONSENSUS_CONTRACT = GENLAYER_CONFIG.consensusContract;
 
 // Create a read-only client
 export function createReadClient() {
